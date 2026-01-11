@@ -5,22 +5,45 @@ import numpy as np
 import joblib
 from datetime import datetime
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm  # 引入字体管理模块
 
 # ==========================================
-# 1. 基础配置
+# 1. 基础配置与路径修复
 # ==========================================
 try:
+    # 强制将工作目录切换到当前脚本所在的文件夹
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 except:
     pass
 
-# 字体设置 (解决中文乱码)
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'PingFang SC', 'Arial Unicode MS']
-plt.rcParams['axes.unicode_minus'] = False
+# ==========================================
+# 2. 彻底解决中文乱码 (双保险逻辑)
+# ==========================================
+def set_chinese_font():
+    """
+    自动寻找可用的中文字体。
+    优先寻找当前目录下的 SimHei.ttf，其次寻找系统字体。
+    """
+    # 方案 A: 优先使用随项目上传的字体文件 (最稳妥，推荐！)
+    local_font_path = 'SimHei.ttf'  # 请确保您把这个文件上传到了 GitHub
+    if os.path.exists(local_font_path):
+        # 注册字体
+        fm.fontManager.addfont(local_font_path)
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+        # st.toast("已加载本地 SimHei 字体", icon="✅") # 调试用
+    else:
+        # 方案 B: 如果没上传文件，尝试系统自带的常见中文字体
+        system_fonts = ['SimHei', 'Microsoft YaHei', 'PingFang SC', 'WenQuanYi Micro Hei', 'Noto Sans CJK SC']
+        plt.rcParams['font.sans-serif'] = system_fonts
+    
+    # 解决负号显示为方块的问题
+    plt.rcParams['axes.unicode_minus'] = False
 
+# 执行字体设置
+set_chinese_font()
 
 # ==========================================
-# 2. 核心类定义：EFTM 模型
+# 3. 核心类定义：EFTM 模型
 # ==========================================
 class EFTMModel:
     def __init__(self, w_cb=0.385412, w_xgb=0.294103, w_lgbm=0.211438, w_ab=0.109047):
@@ -36,9 +59,8 @@ class EFTMModel:
         p_ab = np.array(pred_ab)
         return (self.w_cb * p_cb) + (self.w_xgb * p_xgb) + (self.w_lgbm * p_lgbm) + (self.w_ab * p_ab)
 
-
 # ==========================================
-# 3. 工具函数
+# 4. 工具函数
 # ==========================================
 @st.cache_resource
 def load_models():
@@ -51,24 +73,30 @@ def load_models():
         return None, None, None, None, None, missing
 
     # 加载模型
-    cb = joblib.load('model_cb.pkl')
-    xgb_m = joblib.load('model_xgb.pkl')
-    lgbm = joblib.load('model_lgbm.pkl')
-    ab = joblib.load('model_ab.pkl')
-    feats = joblib.load('feature_names.pkl')
-
-    return cb, xgb_m, lgbm, ab, feats, []
-
+    try:
+        cb = joblib.load('model_cb.pkl')
+        xgb_m = joblib.load('model_xgb.pkl')
+        lgbm = joblib.load('model_lgbm.pkl')
+        ab = joblib.load('model_ab.pkl')
+        feats = joblib.load('feature_names.pkl')
+        return cb, xgb_m, lgbm, ab, feats, []
+    except Exception as e:
+        # 如果加载出错，返回错误信息（防止程序直接崩溃）
+        return None, None, None, None, None, [str(e)]
 
 # ==========================================
-# 4. Streamlit 主程序
+# 5. Streamlit 主程序
 # ==========================================
 def main():
-    st.set_page_config(page_title="污水厂水质预测系统", layout="wide", page_icon="🌊")
+    st.set_page_config(page_title="污水处理厂智能监控与决策支持系统界面", layout="wide", page_icon="🌊")
 
-    st.title("🌊 污水处理厂出水水质预测系统")
+    st.title("🌊 污水处理厂智能监控与决策支持系统界面")
     st.markdown("**EFTM = Ensemble of Four Tree Models** (CatBoost + XGBoost + LightGBM + AdaBoost)")
     st.markdown("---")
+    
+    # 友情提示：如果在云端看到乱码
+    if not os.path.exists('SimHei.ttf'):
+        st.info("💡 提示：如果图表中文显示乱码，请将 'SimHei.ttf' 字体文件上传到 GitHub 仓库根目录。")
 
     # 1. 加载模型
     with st.spinner('正在加载模型文件...'):
@@ -77,7 +105,7 @@ def main():
     if missing_files:
         st.error("❌ 启动失败：找不到以下模型文件")
         st.code('\n'.join(missing_files))
-        st.warning("⚠️ 请先运行 'python train.py' 来生成这些模型文件！")
+        st.warning("⚠️ 请确保所有 .pkl 文件已上传到 GitHub！")
         st.stop()
 
     # 初始化 EFTM 权重
@@ -149,7 +177,7 @@ def main():
         p_final = eftm_model.predict(p_cb, p_xgb, p_lgbm, p_ab)
 
         # ----------------------------------
-        # E. 结果可视化展示 (配色已恢复)
+        # E. 结果可视化展示
         # ----------------------------------
         st.success("✅ 预测计算完成！")
 
@@ -163,13 +191,14 @@ def main():
             models = ['CatBoost', 'XGBoost', 'LightGBM', 'AdaBoost', 'EFTM (最终)']
             vals = [p_cb, p_xgb, p_lgbm, p_ab, p_final]
 
-            # 【恢复配色】：使用之前的 蓝、橙、紫、绿、红 方案
+            # 配色方案
             colors = ['#1f77b4', '#ff7f0e', '#9467bd', '#2ca02c', '#d62728']
 
             ax.barh(models, vals, color=colors)
             ax.set_title('各模型预测结果贡献分析', fontsize=14, fontweight='bold')
             ax.set_xlabel('预测值 (mg/L)', fontsize=12)
 
+            # 添加数值标签
             for i, v in enumerate(vals):
                 ax.text(v, i, f' {v:.3f}', va='center', fontweight='bold')
 
@@ -177,18 +206,15 @@ def main():
             ax.spines['right'].set_visible(False)
             st.pyplot(fig)
 
-        # 【恢复权重表格】：展示详细权重信息
+        # 权重表格展示
         st.markdown("")
         with st.expander("📊 点击查看模型权重详情 (Weight Analysis)", expanded=True):
-            # 构造展示用的数据表
             weight_df = pd.DataFrame({
                 '模型组件 (Model)': ['CatBoost', 'XGBoost', 'LightGBM', 'AdaBoost'],
                 '设定权重 (Weight)': [eftm_model.w_cb, eftm_model.w_xgb, eftm_model.w_lgbm, eftm_model.w_ab],
                 '独立预测值 (Value)': [p_cb, p_xgb, p_lgbm, p_ab]
             })
-            # 格式化显示（保留4位小数）
             st.table(weight_df.style.format("{:.4f}", subset=['设定权重 (Weight)', '独立预测值 (Value)']))
-
 
 if __name__ == "__main__":
     main()
