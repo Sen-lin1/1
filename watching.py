@@ -88,9 +88,9 @@ def load_models():
 # 5. Streamlit 主程序
 # ==========================================
 def main():
-    st.set_page_config(page_title="污水处理厂智能监控与决策支持系统界面", layout="wide", page_icon="🌊")
+    st.set_page_config(page_title="污水处理厂智能监控与决策支持系统", layout="wide", page_icon="🌊")
 
-    st.title("🌊 污水处理厂智能监控与决策支持系统界面")
+    st.title("🌊 污水处理厂智能监控与决策支持系统")
     st.markdown("**EFTM = Ensemble of Four Tree Models** (CatBoost + XGBoost + LightGBM + AdaBoost)")
     st.markdown("---")
     
@@ -218,3 +218,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
