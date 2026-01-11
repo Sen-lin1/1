@@ -5,7 +5,8 @@ import numpy as np
 import joblib
 from datetime import datetime
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm  # 引入字体管理模块
+import matplotlib.font_manager as fm
+import urllib.request  # 用于自动下载字体
 
 # ==========================================
 # 1. 基础配置与路径修复
@@ -17,26 +18,32 @@ except:
     pass
 
 # ==========================================
-# 2. 彻底解决中文乱码 (双保险逻辑)
+# 2. 核心修复：自动下载并加载中文字体
 # ==========================================
 def set_chinese_font():
-    """
-    自动寻找可用的中文字体。
-    优先寻找当前目录下的 SimHei.ttf，其次寻找系统字体。
-    """
-    # 方案 A: 优先使用随项目上传的字体文件 (最稳妥，推荐！)
-    local_font_path = 'SimHei.ttf'  # 请确保您把这个文件上传到了 GitHub
-    if os.path.exists(local_font_path):
-        # 注册字体
-        fm.fontManager.addfont(local_font_path)
-        plt.rcParams['font.sans-serif'] = ['SimHei']
-        # st.toast("已加载本地 SimHei 字体", icon="✅") # 调试用
-    else:
-        # 方案 B: 如果没上传文件，尝试系统自带的常见中文字体
-        system_fonts = ['SimHei', 'Microsoft YaHei', 'PingFang SC', 'WenQuanYi Micro Hei', 'Noto Sans CJK SC']
-        plt.rcParams['font.sans-serif'] = system_fonts
+    font_filename = 'SimHei.ttf'
     
-    # 解决负号显示为方块的问题
+    # 如果当前文件夹里没有字体文件，就自动去网上下载一个
+    if not os.path.exists(font_filename):
+        with st.spinner("正在为云端环境下载中文字体，请稍候..."):
+            try:
+                # 这是一个公开的 SimHei 字体下载链接
+                url = "https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf"
+                urllib.request.urlretrieve(url, font_filename)
+                st.success("✅ 字体下载成功！")
+            except Exception as e:
+                st.error(f"字体下载失败，图表可能无法显示中文。错误: {e}")
+                return
+
+    # 加载字体
+    if os.path.exists(font_filename):
+        fm.fontManager.addfont(font_filename)
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+    else:
+        # 如果实在没有，回退到系统默认
+        plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'DejaVu Sans']
+    
+    # 解决负号显示问题
     plt.rcParams['axes.unicode_minus'] = False
 
 # 执行字体设置
@@ -88,16 +95,12 @@ def load_models():
 # 5. Streamlit 主程序
 # ==========================================
 def main():
-    st.set_page_config(page_title="污水处理厂智能监控与决策支持系统", layout="wide", page_icon="🌊")
+    st.set_page_config(page_title="污水厂水质预测系统", layout="wide", page_icon="🌊")
 
-    st.title("🌊 污水处理厂智能监控与决策支持系统")
+    st.title("🌊 污水处理厂出水水质预测系统")
     st.markdown("**EFTM = Ensemble of Four Tree Models** (CatBoost + XGBoost + LightGBM + AdaBoost)")
     st.markdown("---")
     
-    # 友情提示：如果在云端看到乱码
-    if not os.path.exists('SimHei.ttf'):
-        st.info("💡 提示：如果图表中文显示乱码，请将 'SimHei.ttf' 字体文件上传到 GitHub 仓库根目录。")
-
     # 1. 加载模型
     with st.spinner('正在加载模型文件...'):
         cb_model, xgb_model, lgb_model, ab_model, feature_names, missing_files = load_models()
@@ -106,6 +109,11 @@ def main():
         st.error("❌ 启动失败：找不到以下模型文件")
         st.code('\n'.join(missing_files))
         st.warning("⚠️ 请确保所有 .pkl 文件已上传到 GitHub！")
+        st.stop()
+    
+    # 如果模型加载失败（比如版本不兼容严重报错）
+    if cb_model is None:
+        st.error(f"模型加载出错: {missing_files[0] if missing_files else '未知错误'}")
         st.stop()
 
     # 初始化 EFTM 权重
@@ -170,11 +178,15 @@ def main():
             st.stop()
 
         # 预测
-        p_cb = cb_model.predict(input_df)[0]
-        p_xgb = xgb_model.predict(input_df)[0]
-        p_lgbm = lgb_model.predict(input_df)[0]
-        p_ab = ab_model.predict(input_df)[0]
-        p_final = eftm_model.predict(p_cb, p_xgb, p_lgbm, p_ab)
+        try:
+            p_cb = cb_model.predict(input_df)[0]
+            p_xgb = xgb_model.predict(input_df)[0]
+            p_lgbm = lgb_model.predict(input_df)[0]
+            p_ab = ab_model.predict(input_df)[0]
+            p_final = eftm_model.predict(p_cb, p_xgb, p_lgbm, p_ab)
+        except Exception as e:
+            st.error(f"预测计算出错: {e}")
+            st.stop()
 
         # ----------------------------------
         # E. 结果可视化展示
@@ -188,7 +200,7 @@ def main():
 
         with c2:
             fig, ax = plt.subplots(figsize=(8, 4))
-            models = ['CatBoost', 'XGBoost', 'LightGBM', 'AdaBoost', 'EFTM (最终)']
+            models = ['CatBoost', 'XGBoost', 'LightGBM', 'AdaBoost', 'EFTM (Final)']
             vals = [p_cb, p_xgb, p_lgbm, p_ab, p_final]
 
             # 配色方案
@@ -196,7 +208,7 @@ def main():
 
             ax.barh(models, vals, color=colors)
             ax.set_title('各模型预测结果贡献分析', fontsize=14, fontweight='bold')
-            ax.set_xlabel('预测值 (mg/L)', fontsize=12)
+            ax.set_xlabel('预测值 DO (mg/L)', fontsize=12)
 
             # 添加数值标签
             for i, v in enumerate(vals):
@@ -218,4 +230,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
